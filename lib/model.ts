@@ -240,30 +240,158 @@ export function score(snapshot: Snapshot, ctx: ScoreContext, p: SnapshotProtocol
 }
 
 /** The category families the farm plans are written for. */
-export type FarmFamily = 'lending' | 'trading' | 'yield' | 'rwa' | 'other';
+export type FarmFamily =
+  | 'lending'
+  | 'cdp'
+  | 'trading'
+  | 'perps'
+  | 'yield'
+  | 'curator'
+  | 'basis'
+  | 'prediction'
+  | 'rwa'
+  | 'other';
 
 export function farmFamily(p: SnapshotProtocol): FarmFamily {
   switch (p.category) {
     case 'Lending':
-    case 'CDP':
+    case 'Uncollateralized Lending':
+    case 'Collateral Markets':
       return 'lending';
+    case 'CDP':
+    case 'CDP Manager':
+      return 'cdp';
     case 'Dexs':
-    case 'Derivatives':
-    case 'Options':
-    case 'Perpetuals':
       return 'trading';
+    case 'Derivatives':
+    case 'Perpetuals':
+    case 'Options':
+    case 'Interest Rate Derivatives':
+      return 'perps';
     case 'Yield':
     case 'Yield Aggregator':
-    case 'Risk Curators':
-    case 'Onchain Capital Allocator':
     case 'Farming':
+    case 'Farm':
     case 'Leveraged Farming':
       return 'yield';
+    case 'Risk Curators':
+    case 'Onchain Capital Allocator':
+    case 'Liquidity Manager':
+      return 'curator';
+    case 'Basis Trading':
+      return 'basis';
+    case 'Prediction Market':
+      return 'prediction';
     case 'RWA':
       return 'rwa';
     default:
       return 'other';
   }
+}
+
+/**
+ * What it costs to work on one chain: the per-action fee phrase, the funding route phrase for
+ * getting money there, and the fee buffer a wallet should carry on top of the position. The
+ * figures are the ordinary published ranges for each chain (Ethereum mainnet gas against an
+ * L2's cents, a Bitcoin confirmation hour against a Solana minute); a chain the table does not
+ * name gets the middle-of-the-road default rather than a guess dressed as a fact.
+ */
+export interface ChainProfile {
+  gas: string;
+  fund: string;
+  buffer: number;
+}
+
+const L2_PROFILE: ChainProfile = {
+  gas: 'under $1 in gas',
+  fund: 'bridging from Ethereum costs a few dollars and lands in about 10 minutes',
+  buffer: 25,
+};
+
+const CHEAP_PROFILE: ChainProfile = {
+  gas: 'a few cents in fees',
+  fund: 'bridging in or an exchange withdrawal costs a few dollars and lands within about 15 minutes',
+  buffer: 10,
+};
+
+const CHAIN_PROFILES: Record<string, ChainProfile> = {
+  Ethereum: {
+    gas: '$15-40 in gas',
+    fund: 'an exchange withdrawal or a bridge in costs roughly $10-25 and lands within about 15 minutes',
+    buffer: 100,
+  },
+  Arbitrum: L2_PROFILE,
+  Base: L2_PROFILE,
+  Optimism: L2_PROFILE,
+  'zkSync Era': L2_PROFILE,
+  Linea: L2_PROFILE,
+  Mantle: L2_PROFILE,
+  Unichain: L2_PROFILE,
+  Ink: L2_PROFILE,
+  Solana: {
+    gas: 'a few cents in fees',
+    fund: 'bridging or an exchange withdrawal costs about $1 and lands within a few minutes',
+    buffer: 10,
+  },
+  Binance: {
+    gas: '$0.10-0.50 in gas',
+    fund: 'an exchange withdrawal costs under $1 and lands within a few minutes',
+    buffer: 10,
+  },
+  Polygon: {
+    gas: 'a few cents in gas',
+    fund: 'bridging from Ethereum costs a few dollars and lands in about 10 minutes',
+    buffer: 10,
+  },
+  Avalanche: {
+    gas: '$0.10-0.60 in gas',
+    fund: 'bridging in costs a few dollars and lands within about 15 minutes',
+    buffer: 25,
+  },
+  Tron: {
+    gas: '$1-3 in fees',
+    fund: 'an exchange withdrawal costs about $1 and lands within a few minutes',
+    buffer: 10,
+  },
+  Bitcoin: {
+    gas: 'a network fee of $1-5',
+    fund: 'an exchange withdrawal lands after roughly an hour of confirmations',
+    buffer: 25,
+  },
+  'Hyperliquid L1': {
+    gas: 'a few cents in fees',
+    fund: 'bridging USDC in from Arbitrum costs under $1 and lands within a few minutes',
+    buffer: 10,
+  },
+  Sui: CHEAP_PROFILE,
+  Aptos: CHEAP_PROFILE,
+  Algorand: CHEAP_PROFILE,
+  Stellar: {
+    gas: 'a fraction of a cent in fees',
+    fund: 'an exchange withdrawal costs a fraction of a cent and lands within a minute',
+    buffer: 10,
+  },
+  Ripple: {
+    gas: 'a fraction of a cent in fees',
+    fund: 'an exchange withdrawal costs a fraction of a cent and lands within a minute',
+    buffer: 10,
+  },
+  Stacks: {
+    gas: '$0.10-1 in fees',
+    fund: 'bridging in or an exchange withdrawal costs a few dollars and lands within about 15 minutes',
+    buffer: 25,
+  },
+};
+
+/** The chain profile for a chain name from the snapshot, with the default for unnamed chains. */
+export function chainProfile(chain: string): ChainProfile {
+  return (
+    CHAIN_PROFILES[chain] ?? {
+      gas: '$1-5 in fees',
+      fund: 'bridging in or an exchange withdrawal costs a few dollars and lands within about 15 minutes',
+      buffer: 25,
+    }
+  );
 }
 
 /** A working position size for a protocol of this TVL, in whole dollars. */
@@ -280,38 +408,68 @@ function money(n: number): string {
 }
 
 /**
- * The farm plan for one protocol: five concrete steps, each with what it costs and how long it
- * takes. The steps are written from the protocol's own record: its first chain, its category
- * family and a position sized to its TVL. Nothing here names a web address or promises a
- * reward; where points are mentioned, the step says what activity would count if a programme
- * exists, because the snapshot records none.
+ * The farm plan for one protocol: six concrete steps, each with what it costs and how long it
+ * takes. The steps are written from the protocol's own record, not from a family template
+ * alone: the setup names the chain the protocol's record starts on, the year that record runs
+ * back to, and that chain's real funding route and fee range; the core action is written for
+ * the protocol's own product type (a CDP mints, a curator's vault allocates, a basis strategy
+ * hedges); a multi-chain protocol gets a step on its second named chain at that chain's fees,
+ * and the running step answers the protocol's own seven-day TVL move in the snapshot, so a
+ * growing record is farmed on a cadence and a shrinking one is not chased. Nothing here names
+ * a web address or promises a reward; where points are mentioned, the step says what activity
+ * would count if a programme exists, because the snapshot records none.
  */
 export function farmSteps(p: SnapshotProtocol, age: number): string[] {
   const chain = p.chains[0] ?? 'its main chain';
+  const secondChain = p.chains[1];
   const chainCount = p.chains.length;
   const stake = positionUsd(p);
-  const gas = chain === 'Ethereum' ? '$15-40 in gas' : '$1-10 in gas';
+  const prof = chainProfile(chain);
+  const gas = prof.gas;
   const weeks = age >= 730 ? 8 : 12;
   const family = farmFamily(p);
+  const since = p.listed_at !== null ? `, where its record runs back to ${p.listed_at.slice(0, 4)}` : '';
   const core: Record<FarmFamily, string> = {
-    lending: `Supply ${money(stake)} of a major stablecoin or ETH as collateral in ${p.name} on ${chain}, then borrow a small amount (under 30% of the collateral value) and repay it within the week, so the address shows both sides of the market. Cost: ${gas} plus a few dollars of interest; about 25 minutes.`,
-    trading: `Make ${money(stake)} of volume on ${p.name} on ${chain} across at least four separate sessions in the first week, trading liquid pairs and closing each position the same day, so the address reads as a genuine user rather than one wash trade. Cost: ${gas} plus roughly 0.1% in trading fees; about 20 minutes a session.`,
-    yield: `Deposit ${money(stake)} into the main vault or curated market of ${p.name} on ${chain} and leave it in place; vault shares that accrue are the record of the position. Cost: ${gas} to deposit and the same again to withdraw later; about 15 minutes.`,
+    lending: `Supply ${money(stake)} of a major stablecoin or ETH as collateral in ${p.name} on ${chain}, then borrow a small amount (under 30% of the collateral value) and repay it within the week, so the address shows both sides of the lending market. Cost: ${gas} plus a few dollars of interest; about 25 minutes.`,
+    cdp: `Deposit ${money(stake)} of collateral in ${p.name} on ${chain} (a major asset it accepts, such as the chain's native token, BTC or ETH) and mint its stablecoin against it at a conservative ratio (collateral worth at least twice the debt), then repay part of the mint within the first month. Cost: ${gas} to open and adjust the position; about 25 minutes.`,
+    trading: `Trade ${money(stake)} of volume on ${p.name} on ${chain} across at least four separate sessions in the first week, and leave a small position in one of its main liquidity pools, so the address shows both swaps and provided liquidity. Cost: ${gas} plus roughly 0.1-0.3% in swap and pool fees; about 20 minutes a session.`,
+    perps: `Open and close small perpetual positions on ${p.name} on ${chain} across at least four separate sessions in the first week, keeping each position under ${money(Math.round(stake / 2))} of margin and closing it the same day, so the address reads as a genuine trader rather than one wash trade. Cost: ${gas} plus trading fees and any funding paid; about 20 minutes a session.`,
+    yield: `Deposit ${money(stake)} into the main vault of ${p.name} on ${chain} and leave it in place; the vault shares that accrue are the record of the position. Cost: ${gas} to deposit and the same again to withdraw later; about 15 minutes.`,
+    curator: `Deposit ${money(stake)} into a vault that ${p.name} curates on ${chain} (its vaults sit on lending markets and the curator sets their allocations), choosing the vault whose stated strategy is plain lending rather than looping. Cost: ${gas} to deposit and the same again to withdraw later; about 15 minutes.`,
+    basis: `Deposit ${money(stake)} of stablecoins into the basis strategy of ${p.name} on ${chain} and hold the position; the strategy's own hedging is what the deposit funds, so no second leg is needed from this wallet. Cost: ${gas} to deposit and the same again to exit; about 15 minutes.`,
+    prediction: `Place small trades on the most liquid markets of ${p.name} on ${chain}, about ${money(Math.round(stake / 10))} a market across at least ten markets in the first two weeks, and let some positions settle rather than selling every one early. Cost: ${gas} plus the spreads paid; about 15 minutes a session.`,
     rwa: `Complete the onboarding and any identity check ${p.name} asks of new users, then buy ${money(stake)} of its tokenized real-world asset product on ${chain} and hold it in the same wallet. Cost: ${gas} plus any issuance spread the product states; about 40 minutes including the checks.`,
     other: `Make the core deposit or stake of ${p.name} on ${chain} with ${money(stake)}, using the product's main market rather than a side pool, and keep the position open. Cost: ${gas} in and the same again out; about 20 minutes.`,
   };
   const second: Record<FarmFamily, string> = {
     lending: `Repeat a smaller supply-and-borrow cycle every week for ${weeks} weeks, varying the amounts, and vote in any governance poll the app opens to suppliers. Cost: ${gas} a week; about 10 minutes a week.`,
-    trading: `Come back for one session a week for ${weeks} weeks, and try a second feature of ${p.name} (a limit order, a different market, or its second chain deployment) at least twice. Cost: ${gas} plus fees a session; about 20 minutes a week.`,
+    cdp: `Adjust the position once a month (top the collateral up or repay a slice as prices move) so it stays live and safely collateralised across the whole ${weeks}-week run. Cost: ${gas} a month; about 10 minutes a month.`,
+    trading: `Come back for one session a week for ${weeks} weeks, and use a second feature of ${p.name} (a limit order, a different pair, or a second pool) at least twice. Cost: ${gas} plus fees a session; about 20 minutes a week.`,
+    perps: `Come back for one session a week for ${weeks} weeks and try a second market of ${p.name} at least twice, keeping the same small size. Cost: ${gas} plus fees and funding a session; about 20 minutes a week.`,
     yield: `Add a small top-up or rebalance between two of the protocol's vaults once a month, and claim and re-deposit any rewards it pays, so the address shows an ongoing allocation rather than a single deposit. Cost: ${gas} a month; about 10 minutes a month.`,
+    curator: `Once a month, move a slice of the position (about a quarter) into a second vault ${p.name} curates, or top the first one up, and read the curator's posted allocation notes when they appear. Cost: ${gas} a month; about 10 minutes a month.`,
+    basis: `Top the position up by about a tenth once a month and check the strategy's reported funding rate when it posts, keeping the deposit in place across the whole ${weeks}-week run. Cost: ${gas} a month; about 10 minutes a month.`,
+    prediction: `Trade one or two new markets a week for ${weeks} weeks, favouring markets that resolve within the month, so the record builds steadily instead of in one burst. Cost: ${gas} plus spreads a week; about 15 minutes a week.`,
     rwa: `Add a second, smaller purchase in a later month and read the product's monthly report or attestation when it posts, keeping the holding across at least one full reporting cycle. Cost: ${gas} plus the spread on ${money(Math.round(stake / 4))}; about 15 minutes a month.`,
-    other: `Use one further feature of ${p.name} each month (a second market, a referral-free direct action, or its deployment on another of its ${chainCount} chains) so the address is a user of the product, not a single transaction. Cost: ${gas} a month; about 15 minutes a month.`,
+    other: `Use one further feature of ${p.name} each month (a second market or a second product line, or its governance if it opens one) so the address is a user of the product, not a single transaction. Cost: ${gas} a month; about 15 minutes a month.`,
   };
+  const deepen =
+    secondChain !== undefined
+      ? `Repeat the core action at a smaller size (about ${money(Math.round(stake / 4))}) on ${secondChain}, the second deployment in ${p.name}'s record${chainCount > 2 ? ` of ${chainCount} chains` : ''}: there, ${chainProfile(secondChain).fund}, and each action costs ${chainProfile(secondChain).gas}. Cost: as stated; about 20 minutes to set up.`
+      : `Deepen the same-chain record: run a second, smaller position (about ${money(Math.round(stake / 4))}) in a different market or vault of ${p.name} on ${chain}, so the address is not riding on a single pool. Cost: ${gas} in and the same again out; about 15 minutes.`;
+  const g7 = p.change_7d;
+  const trend =
+    g7 !== null && g7 >= 5
+      ? `the snapshot's last week had its TVL up ${Math.round(g7)}%, so keep the weekly cadence while it is growing rather than front-running it in one day`
+      : g7 !== null && g7 <= -15
+        ? `its TVL fell ${Math.round(-g7)}% in the snapshot's last week, so hold the planned size and do not add beyond it until the record steadies`
+        : 'consistency over months is what separates a farmer from a snapshot-day visitor if a launch ever counts usage';
   return [
-    `Set up a fresh wallet for ${p.name} and fund it on ${chain}, the chain where the protocol holds most of its record${chainCount > 1 ? ` (it tracks ${chainCount} chains in all)` : ''}; bridge ${money(stake + 100)} so fees never strand the position. Cost: ${gas} plus bridge fees of a few dollars; about 20 minutes.`,
+    `Set up a fresh wallet for ${p.name} and fund it on ${chain}${since}; ${prof.fund}, so move ${money(stake + prof.buffer)} in to cover the position and its fees. Cost: the funding cost just stated; about 20 minutes.`,
     core[family],
     second[family],
-    `Keep the position and the activity running for at least ${weeks} weeks, checking in weekly that the position is healthy and the wallet still holds it; consistency over months is what separates a farmer from a snapshot-day visitor if a launch ever counts usage. Cost: no spend beyond gas already counted; about 5 minutes a week.`,
+    deepen,
+    `Keep the position and the activity running for at least ${weeks} weeks, checking in weekly that the position is healthy and the wallet still holds it; ${trend}. Cost: no spend beyond the fees already counted; about 5 minutes a week.`,
     `Keep your own records (dates, amounts, transaction hashes) in a note, and if ${p.name} opens a points programme, a governance forum or a launch registration, join it with this same wallet promptly: the steps above are the activity such programmes usually count. Cost: $0; about 15 minutes when it happens.`,
   ];
 }
