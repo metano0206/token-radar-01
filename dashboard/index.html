@@ -45,6 +45,31 @@
     </article>
   </div>
   <p class="formula">implied value = TVL × peer multiple × growth factor × maturity factor</p>
+  <div class="methodology">
+    <h3>The model, end to end</h3>
+    <ol>
+      <li><strong>The screen.</strong> A row must record no token in the snapshot — no CoinGecko
+      id, no symbol — and must not be a wrapped, staked, bridged or versioned product of a
+      protocol whose token already trades, nor an exchange's own product: any launch of those
+      belongs to a token that exists. The same screen runs at every TVL, so the board holds the
+      snapshot's 40-protocol watchlist and the earlier protocols below its floor.</li>
+      <li><strong>The peer set.</strong> A row is priced by its category's peers: the snapshot's
+      protocols in that category that do record a token with a market cap. Each peer's
+      market-cap / TVL is winsorized to the pooled 10th–90th percentile band before any median
+      is taken, and the category median is shrunk toward the global median with a prior weight
+      of four peers, so a category with one or two peers cannot price a board on one or two
+      observations. A category with no peers uses the global median. Open any row: its detail
+      view lists the actual peers behind its multiple.</li>
+      <li><strong>The range.</strong> The point estimate is not the whole claim. Each detail
+      view also prices the row at its peer set's 25th and 75th percentile multiples, shrunk the
+      same way and run through the row's own growth and maturity factors: what the launch would
+      be worth if the market priced it like a cheaper peer, or like a dearer one.</li>
+      <li><strong>One function, every row.</strong> The same code scores all 198 rows from the
+      snapshot's figures alone; no protocol's name is looked up, weighted or excluded by hand,
+      and the tokenized protocols are never ranked — they are the yardstick, not the board.
+      The program that writes this page runs twice to the same bytes.</li>
+    </ol>
+  </div>
 </section>
 
 <section class="wrap" aria-label="The board">

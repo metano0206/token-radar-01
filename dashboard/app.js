@@ -44,6 +44,8 @@ els.universe.innerHTML = [
   [DATA.counts.tokenized, 'already record a token — set aside, never ranked', ''],
   [DATA.counts.products, 'record no token but are a product of one that trades — set aside', ''],
   [DATA.counts.ranked, `ranked on the board · ${DATA.counts.watchlist} of them on the watchlist`, 'hot'],
+  [money(DATA.total_implied_usd), 'of implied launch value across the whole board', ''],
+  [`${DATA.median_multiple.toFixed(2)}×`, 'median peer multiple applied to a row', ''],
 ]
   .map(([n, label, cls]) => `<div class="stat ${cls}"><b>${n}</b><span>${label}</span></div>`)
   .join('');
@@ -110,6 +112,43 @@ function rowHtml(r, selected) {
 }
 
 /* ---- detail view ---- */
+const peerSets = new Map((DATA.peer_sets || []).map((s) => [s.category, s]));
+
+function rangeHtml(r) {
+  const rg = DATA.ranges[r.slug];
+  if (!rg) return '';
+  const span = rg.hi - rg.lo;
+  const at = span > 0 ? Math.min(100, Math.max(0, ((r.implied_value_usd - rg.lo) / span) * 100)) : 50;
+  return `<div class="range">
+    <div class="range-head"><span>Implied range · peer 25th–75th percentile</span><b>${money(rg.lo)} – ${money(rg.hi)}</b></div>
+    <div class="rangebar"><i style="left:${at.toFixed(1)}%"></i></div>
+    <p class="range-note">The point estimate prices this protocol at its peer median, ${r.peer_multiple.toFixed(2)}×.
+    Priced at the peer set's 25th percentile multiple (${rg.mlo.toFixed(2)}×) the same TVL and factors give ${money(rg.lo)};
+    at the 75th (${rg.mhi.toFixed(2)}×), ${money(rg.hi)}. The marker sits at the point estimate.</p>
+  </div>`;
+}
+
+function peersHtml(r) {
+  const set = r.category ? peerSets.get(r.category) : undefined;
+  if (!set) {
+    return `<h3>The peer set</h3>
+  <p class="working-note">No protocol in ${esc(r.category ?? 'this category')} records a token with a market cap in the
+  snapshot, so there is no category peer set to price from: the model falls back to the global peer median,
+  ${DATA.global_multiple.toFixed(2)}×, and the range above reads the global peer spread.</p>`;
+  }
+  const body = set.peers
+    .map((p) => `<tr><td><span class="pname">${esc(p.name)}</span><span class="pslug">${esc(p.slug)}</span></td><td class="num">${money(p.mcap_usd)}</td><td class="num">${money(p.tvl_usd)}</td><td class="num">${p.multiple.toFixed(2)}×</td></tr>`)
+    .join('');
+  return `<h3>The peer set behind the multiple</h3>
+  <p class="working-note">${set.peers.length} tokenized peer${set.peers.length === 1 ? '' : 's'} in ${esc(set.category)},
+  each priced at its market cap over its TVL, winsorized to the pooled band. Their median is ${set.median.toFixed(2)}×;
+  shrunk toward the global median of ${DATA.global_multiple.toFixed(2)}×, it applies to this row as ${r.peer_multiple.toFixed(2)}×.</p>
+  <div class="table-scroll peers-scroll"><table class="peers">
+    <thead><tr><th>Peer</th><th class="num">Market cap</th><th class="num">TVL</th><th class="num">Cap / TVL</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table></div>`;
+}
+
 function detailHtml(r) {
   const growth = r.change_7d === null ? 'no change reported (factor 1.00)' :
     `${r.change_7d > 0 ? '+' : ''}${r.change_7d.toFixed(1)}% over seven days (factor ${r.growth_factor.toFixed(2)})`;
@@ -130,6 +169,8 @@ function detailHtml(r) {
   </div>
   <p class="working">${money(r.tvl_usd)} × ${r.peer_multiple.toFixed(2)} × ${r.growth_factor.toFixed(2)} × ${r.maturity_factor.toFixed(2)} = ${money(r.implied_value_usd)}</p>
   <p class="working-note">${peerNote} Growth: ${growth}. Maturity: a tokenless record of ${ageText(r.age_days)} gives factor ${r.maturity_factor.toFixed(2)} on the model's 0.75–1.00 scale.</p>
+  ${rangeHtml(r)}
+  ${peersHtml(r)}
   <h3>Farm plan</h3>
   <ol class="plan">${r.farm_steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>`;
 }

@@ -27,23 +27,24 @@ body {
 }
 .masthead h1 {
   margin: 0 0 12px; font-family: Georgia, "Times New Roman", serif; font-weight: 600;
-  font-size: 34px; line-height: 1.18;
+  font-size: 35px; line-height: 1.16; letter-spacing: -0.01em;
 }
-.lede { margin: 0 0 14px; max-width: 76ch; color: #cfd6e4; }
+.lede { margin: 0 0 14px; max-width: 76ch; color: #cfd6e4; font-size: 15.5px; }
 .meta { margin: 0; font-size: 13px; color: #93a1ba; }
 .meta strong { color: #f2ecdc; font-weight: 600; }
 
 /* Universe counts */
-.universe { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 22px; }
-.stat { background: var(--card); border: 1px solid var(--line); border-top: 3px solid var(--ink); padding: 12px 14px; }
-.stat b { display: block; font-family: Georgia, serif; font-size: 28px; font-weight: 600; }
+.universe { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-top: 3px solid var(--ink); padding: 13px 15px; }
+.stat b { display: block; font-family: Georgia, serif; font-size: 29px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .stat span { font-size: 12.5px; color: var(--ink-soft); }
 .stat.hot { border-top-color: var(--amber); }
 .stat.hot b { color: var(--amber); }
 
 /* Method */
-.method { margin-top: 26px; }
+.method { margin-top: 28px; }
 .method h2, .detail h2 { font-family: Georgia, serif; font-size: 21px; margin: 0 0 12px; }
+.method h2 { border-bottom: 2px solid var(--amber); padding-bottom: 7px; }
 .factors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .factors article { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; }
 .factors h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); }
@@ -52,6 +53,11 @@ body {
   margin: 12px 0 0; padding: 10px 14px; background: var(--ink); color: #f2ecdc;
   font-family: Georgia, serif; font-size: 16px; text-align: center;
 }
+.methodology { margin-top: 16px; background: var(--card); border: 1px solid var(--line); padding: 14px 18px 10px; }
+.methodology h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); }
+.methodology ol { margin: 0; padding-left: 20px; }
+.methodology li { margin-bottom: 8px; font-size: 14px; color: var(--ink-soft); max-width: 108ch; }
+.methodology li strong { color: var(--ink); }
 
 /* Controls */
 .controls {
@@ -75,7 +81,7 @@ thead th {
   position: sticky; top: 0; background: var(--ink); color: #f2ecdc; text-align: left;
   font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; padding: 9px 10px; white-space: nowrap;
 }
-tbody td { padding: 7px 10px; border-top: 1px solid #eee5cf; vertical-align: top; }
+tbody td { padding: 8px 10px; border-top: 1px solid #eee5cf; vertical-align: top; }
 tbody tr { cursor: pointer; }
 tbody tr:nth-child(even) { background: #fbf8ef; }
 tbody tr:hover { background: var(--amber-soft); }
@@ -105,9 +111,24 @@ td.rank { font-family: Georgia, serif; font-weight: 600; }
 .stats span { font-size: 12px; color: var(--ink-soft); }
 .working { margin: 0 0 6px; font-family: Georgia, serif; font-size: 16.5px; }
 .working-note { margin: 0 0 12px; font-size: 13.5px; color: var(--ink-soft); max-width: 92ch; }
-.detail h3 { margin: 14px 0 8px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); }
+.detail h3 { margin: 16px 0 8px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); }
 ol.plan { margin: 0; padding-left: 22px; }
 ol.plan li { margin-bottom: 8px; max-width: 96ch; }
+
+/* Implied range */
+.range { margin: 14px 0 4px; border: 1px solid var(--line); background: #fbf8ef; padding: 12px 14px; }
+.range-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; }
+.range-head span { font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); }
+.range-head b { font-family: Georgia, serif; font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rangebar { position: relative; height: 8px; margin: 12px 2px 10px; background: linear-gradient(90deg, #e7d9ae, var(--amber-soft), #e7d9ae); border: 1px solid var(--line); }
+.rangebar i { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; background: var(--ink); }
+.range-note { margin: 0; font-size: 13.5px; color: var(--ink-soft); max-width: 96ch; }
+
+/* Peer set table */
+.peers-scroll { margin-bottom: 4px; }
+table.peers { min-width: 0; font-size: 13.5px; }
+table.peers thead th { background: var(--ink-soft); padding: 7px 10px; }
+table.peers tbody td { padding: 6px 10px; }
 
 /* Footer */
 footer { margin: 26px auto 34px; font-size: 13.5px; color: var(--ink-soft); }

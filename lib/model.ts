@@ -14,7 +14,10 @@
 // toward the global median when a category has few peers. The peer ratios are winsorized to
 // the pooled 10th-90th percentile band first: a token whose market cap prices something other
 // than its protocol's TVL (an exchange token, a locker) is a broken comparable, and in a
-// category with one or two peers it would otherwise be the whole multiple. growth_factor reads the seven-day
+// category with one or two peers it would otherwise be the whole multiple. The dashboard also
+// shows the peer set itself and an implied-value range: the same TVL and factors priced at
+// the peer set's 25th and 75th percentile multiples, shrunk the same way, so a reader can see
+// what the launch would be worth priced like a cheaper or a dearer peer. growth_factor reads the seven-day
 // TVL change, clamped so one wild week cannot carry a ranking. maturity_factor rewards a
 // record that has run longer with no token: the longer a protocol has operated tokenless, the
 // more of a launch its record supports. No protocol name is ever special-cased.
@@ -44,7 +47,7 @@ export interface Snapshot {
 
 /** The model's stated constants. The dashboard prints them; nothing hides in the code. */
 export const MODEL = {
-  version: 'peer-multiple-1',
+  version: 'peer-multiple-2',
   growth_clamp_low: -50,
   growth_clamp_high: 100,
   growth_weight: 0.35,
@@ -123,46 +126,97 @@ function percentile(sorted: number[], pct: number): number {
   return lo === hi ? sorted[lo]! : sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (at - lo);
 }
 
+/** One tokenized peer as the dashboard shows it: its name and figures, ratio winsorized. */
+export interface PeerRef {
+  slug: string;
+  name: string;
+  mcap_usd: number;
+  tvl_usd: number;
+  multiple: number;
+}
+
+/** One category's peer set: the median the model prices from, its quartiles and its members. */
+export interface CategoryPeers {
+  peers: number;
+  median: number;
+  multiple: number;
+  p25: number;
+  p75: number;
+  list: PeerRef[];
+}
+
 /** Peer multiples: how the market prices tokenized protocols against their TVL. */
 export interface PeerMultiples {
   global_median: number;
-  by_category: Map<string, { peers: number; median: number; multiple: number }>;
+  global_p25: number;
+  global_p75: number;
+  by_category: Map<string, CategoryPeers>;
 }
 
 /**
  * Median market-cap/TVL for every category that has tokenized peers, plus the global median.
  * A category's multiple is its own median shrunk toward the global one with a prior weight of
  * MODEL.shrink_prior, so a category with two peers cannot price a board on two observations.
+ * Each category also keeps its winsorized 25th and 75th percentile ratios and its member
+ * list, so the dashboard can show the very set a multiple came from and price a range from
+ * its spread; the point multiple's arithmetic is unchanged by keeping them.
  */
 export function peerMultiples(snapshot: Snapshot): PeerMultiples {
-  const raw: { category: string | null; ratio: number }[] = [];
+  const raw: { category: string | null; ratio: number; slug: string; name: string; mcap: number; tvl: number }[] = [];
   for (const p of snapshot.protocols) {
     if (p.gecko_id === null || p.mcap_usd === null || p.mcap_usd <= 0 || p.tvl_usd <= 0) continue;
-    raw.push({ category: p.category, ratio: p.mcap_usd / p.tvl_usd });
+    raw.push({ category: p.category, ratio: p.mcap_usd / p.tvl_usd, slug: p.slug, name: p.name, mcap: p.mcap_usd, tvl: p.tvl_usd });
   }
   const pooled = raw.map((r) => r.ratio).sort((a, b) => a - b);
   const bandLow = percentile(pooled, MODEL.winsor_low_pct);
   const bandHigh = percentile(pooled, MODEL.winsor_high_pct);
   const ratiosByCategory = new Map<string, number[]>();
+  const refsByCategory = new Map<string, PeerRef[]>();
   const all: number[] = [];
-  for (const { category, ratio } of raw) {
-    const winsorized = Math.min(bandHigh, Math.max(bandLow, ratio));
+  for (const item of raw) {
+    const winsorized = Math.min(bandHigh, Math.max(bandLow, item.ratio));
     all.push(winsorized);
-    if (category !== null) {
-      const list = ratiosByCategory.get(category) ?? [];
+    if (item.category !== null) {
+      const list = ratiosByCategory.get(item.category) ?? [];
       list.push(winsorized);
-      ratiosByCategory.set(category, list);
+      ratiosByCategory.set(item.category, list);
+      const refs = refsByCategory.get(item.category) ?? [];
+      refs.push({
+        slug: item.slug,
+        name: item.name,
+        mcap_usd: item.mcap,
+        tvl_usd: item.tvl,
+        multiple: Number(winsorized.toFixed(4)),
+      });
+      refsByCategory.set(item.category, refs);
     }
   }
   const globalMedian = median(all);
-  const byCategory = new Map<string, { peers: number; median: number; multiple: number }>();
+  const sortedAll = [...all].sort((a, b) => a - b);
+  const byCategory = new Map<string, CategoryPeers>();
   for (const [category, ratios] of ratiosByCategory) {
     const catMedian = median(ratios);
     const multiple =
       (ratios.length * catMedian + MODEL.shrink_prior * globalMedian) / (ratios.length + MODEL.shrink_prior);
-    byCategory.set(category, { peers: ratios.length, median: catMedian, multiple });
+    const sorted = [...ratios].sort((a, b) => a - b);
+    const list = (refsByCategory.get(category) ?? []).sort(
+      (a, b) => b.mcap_usd - a.mcap_usd || (a.slug < b.slug ? -1 : 1),
+    );
+    byCategory.set(category, {
+      peers: ratios.length,
+      median: catMedian,
+      multiple,
+      p25: percentile(sorted, 25),
+      p75: percentile(sorted, 75),
+      list,
+    });
   }
-  return { global_median: globalMedian, by_category: byCategory };
+  return {
+    global_median: globalMedian,
+    global_p25: percentile(sortedAll, 25),
+    global_p75: percentile(sortedAll, 75),
+    by_category: byCategory,
+  };
 }
 
 /** The multiple applied to one protocol: its category's, or the global median when it has none. */
@@ -236,6 +290,51 @@ export function score(snapshot: Snapshot, ctx: ScoreContext, p: SnapshotProtocol
     growth_factor: gFactor,
     age_days: age,
     maturity_factor: mFactor,
+  };
+}
+
+/**
+ * The spread of one protocol's peer set, as two multiples: the category's winsorized 25th and
+ * 75th percentile ratios, each shrunk toward the matching global quartile with the same prior
+ * weight the point multiple is shrunk by, so a small peer set widens toward the global spread
+ * instead of inventing one of its own. A category with no peers reads the global quartiles.
+ */
+export function multipleRange(peers: PeerMultiples, p: SnapshotProtocol): { low: number; high: number } {
+  if (p.category !== null) {
+    const entry = peers.by_category.get(p.category);
+    if (entry !== undefined) {
+      const n = entry.peers;
+      return {
+        low: (n * entry.p25 + MODEL.shrink_prior * peers.global_p25) / (n + MODEL.shrink_prior),
+        high: (n * entry.p75 + MODEL.shrink_prior * peers.global_p75) / (n + MODEL.shrink_prior),
+      };
+    }
+  }
+  return { low: peers.global_p25, high: peers.global_p75 };
+}
+
+/** One protocol's implied-value range: its point score priced at its peer set's spread. */
+export interface ValueRange {
+  multiple_low: number;
+  multiple_high: number;
+  implied_low_usd: number;
+  implied_high_usd: number;
+}
+
+/**
+ * Price a scored protocol at the low and high ends of its peer set's spread, holding its own
+ * TVL, growth factor and maturity factor. The range is presentational, never a second price:
+ * it is clamped to contain the point estimate, and it never feeds the ranking.
+ */
+export function valueRange(ctx: ScoreContext, p: SnapshotProtocol, s: Score): ValueRange {
+  const { low, high } = multipleRange(ctx.peers, p);
+  const lo = Math.min(low, s.peer_multiple);
+  const hi = Math.max(high, s.peer_multiple);
+  return {
+    multiple_low: lo,
+    multiple_high: hi,
+    implied_low_usd: Math.max(1, Math.round(p.tvl_usd * lo * s.growth_factor * s.maturity_factor)),
+    implied_high_usd: Math.max(1, Math.round(p.tvl_usd * hi * s.growth_factor * s.maturity_factor)),
   };
 }
 
@@ -527,6 +626,22 @@ export function buildBoard(snapshot: Snapshot): BoardRow[] {
   }));
 }
 
+/** One category's peer set as the dashboard's detail view shows it. */
+export interface PeerSet {
+  category: string;
+  median: number;
+  multiple: number;
+  peers: PeerRef[];
+}
+
+/** One row's implied-value range, keyed by slug in the dashboard data. */
+export interface RowRange {
+  mlo: number;
+  mhi: number;
+  lo: number;
+  hi: number;
+}
+
 /** The dashboard's data: the board plus the universe counts and the model's statement. */
 export interface DashboardData {
   as_of: string;
@@ -534,6 +649,10 @@ export interface DashboardData {
   model_version: string;
   counts: { tracked: number; tokenized: number; products: number; ranked: number; watchlist: number };
   global_multiple: number;
+  total_implied_usd: number;
+  median_multiple: number;
+  peer_sets: PeerSet[];
+  ranges: Record<string, RowRange>;
   rows: BoardRow[];
 }
 
@@ -541,6 +660,26 @@ export function buildDashboardData(snapshot: Snapshot, board: BoardRow[]): Dashb
   const ctx = scoreContext(snapshot);
   const tokenized = snapshot.protocols.filter((p) => !recordsNoToken(p)).length;
   const products = snapshot.protocols.filter((p) => recordsNoToken(p) && isProductLine(p)).length;
+  const bySlug = new Map(snapshot.protocols.map((p) => [p.slug, p]));
+  const ranges: Record<string, RowRange> = {};
+  for (const row of board) {
+    const p = bySlug.get(row.slug)!;
+    const vr = valueRange(ctx, p, score(snapshot, ctx, p));
+    ranges[row.slug] = {
+      mlo: Number(vr.multiple_low.toFixed(4)),
+      mhi: Number(vr.multiple_high.toFixed(4)),
+      lo: vr.implied_low_usd,
+      hi: vr.implied_high_usd,
+    };
+  }
+  const peerSets: PeerSet[] = [...ctx.peers.by_category.entries()]
+    .map(([category, entry]) => ({
+      category,
+      median: Number(entry.median.toFixed(4)),
+      multiple: Number(entry.multiple.toFixed(4)),
+      peers: entry.list,
+    }))
+    .sort((a, b) => (a.category < b.category ? -1 : 1));
   return {
     as_of: snapshot.as_of,
     floor_usd: snapshot.floor_usd,
@@ -553,6 +692,10 @@ export function buildDashboardData(snapshot: Snapshot, board: BoardRow[]): Dashb
       watchlist: snapshot.watchlist.length,
     },
     global_multiple: Number(ctx.peers.global_median.toFixed(4)),
+    total_implied_usd: board.reduce((sum, r) => sum + r.implied_value_usd, 0),
+    median_multiple: Number(median(board.map((r) => r.peer_multiple)).toFixed(4)),
+    peer_sets: peerSets,
+    ranges,
     rows: board,
   };
 }
