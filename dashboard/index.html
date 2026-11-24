@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Launch Radar — pre-token protocols ranked by implied value</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Token Launch Radar</p>
+    <h1>Protocols with no token yet,<br>ranked by what their launch would be worth.</h1>
+    <p class="lede">A board built from one sealed snapshot of every protocol DefiLlama tracks.
+    Each row records no token in that snapshot and is not a wrapped, staked, bridged or versioned
+    product of one that trades. Its implied value is priced from the snapshot's own figures,
+    the way the market already prices its tokenized peers.</p>
+    <p class="meta" id="meta-line">Loading the board…</p>
+  </div>
+</header>
+
+<section class="universe wrap" id="universe" aria-label="The universe the radar reads"></section>
+
+<section class="method wrap" aria-label="How the implied value is worked out">
+  <h2>How a row is priced</h2>
+  <div class="factors">
+    <article>
+      <h3>1 · Peer multiple</h3>
+      <p>The median market-cap / TVL of the snapshot's tokenized protocols in the same category,
+      shrunk toward the global median when a category has few peers, with peer ratios winsorized
+      to the pooled 10th–90th percentile band so one token that prices something other than its
+      protocol's TVL cannot carry a category. A lending market is priced like lending markets
+      that already trade, not like a bridge.</p>
+    </article>
+    <article>
+      <h3>2 · Growth</h3>
+      <p>The seven-day TVL change, clamped to −50%…+100% so one wild week cannot carry a ranking,
+      moves the price by up to ±35%. No reported change reads as no signal, never as a penalty.</p>
+    </article>
+    <article>
+      <h3>3 · Maturity</h3>
+      <p>How long the protocol has run with no token, from the day DefiLlama began tracking it.
+      The factor rises from 0.75 to 1.00 over five years: a longer tokenless record supports
+      more of a launch.</p>
+    </article>
+  </div>
+  <p class="formula">implied value = TVL × peer multiple × growth factor × maturity factor</p>
+</section>
+
+<section class="wrap" aria-label="The board">
+  <div class="controls" id="controls">
+    <label class="ctl grow">Search
+      <input type="search" id="q" placeholder="Protocol name or slug" autocomplete="off">
+    </label>
+    <label class="ctl">Category
+      <select id="cat"><option value="">All categories</option></select>
+    </label>
+    <label class="ctl">Chain
+      <select id="chain"><option value="">All chains</option></select>
+    </label>
+    <label class="ctl">Sort by
+      <select id="sort">
+        <option value="rank">Implied value</option>
+        <option value="tvl">TVL</option>
+        <option value="growth">7-day growth</option>
+        <option value="age">Age of record</option>
+        <option value="name">Name</option>
+      </select>
+    </label>
+    <label class="ctl check">
+      <input type="checkbox" id="watch"> Watchlist only
+    </label>
+    <p class="count" id="count"></p>
+  </div>
+
+  <div id="detail" class="detail" hidden></div>
+
+  <div class="table-scroll">
+    <table id="board">
+      <thead>
+        <tr>
+          <th class="num">#</th><th>Protocol</th><th>Category</th><th>Chains</th>
+          <th class="num">TVL</th><th class="num">7d</th><th class="num">Age</th>
+          <th class="num">Multiple</th><th class="num">Implied value</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <p class="empty" id="empty" hidden>No protocol on the board matches those filters.</p>
+</section>
+
+<footer class="wrap">
+  <p><strong>Reading the board.</strong> “Records no token” is DefiLlama's record in the sealed
+  snapshot, not a promise: a protocol may hold a token its record does not carry, and this board
+  does not predict whether or when any token is issued. Protocols that already record a token —
+  and wrapped, staked, bridged or versioned products of one — are set aside, never ranked.
+  Farm plans are starting points written from each protocol's own record; check the protocol's
+  own app before acting, and never deposit more than you can afford to lose.</p>
+  <p class="fine" id="fine-line"></p>
+</footer>
+
+<script src="../data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
