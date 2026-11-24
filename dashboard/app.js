@@ -121,9 +121,10 @@ function visible() {
 function rowHtml(r, selected) {
   const rg = DATA.ranges[r.slug];
   const ft = DATA.farm_totals[r.slug];
+  const why = DATA.rationales ? DATA.rationales[r.slug] : undefined;
   return `<tr data-slug="${esc(r.slug)}"${r.slug === selected ? ' class="selected"' : ''}>
     <td class="num rank">${r.rank}</td>
-    <td><span class="pname">${esc(r.name)}</span>${r.watchlist ? '<span class="chip">Watchlist</span>' : ''}<span class="pslug">${esc(r.slug)}</span></td>
+    <td><span class="pname">${esc(r.name)}</span>${r.watchlist ? '<span class="chip">Watchlist</span>' : ''}<span class="pslug">${esc(r.slug)}</span>${why ? `<span class="pwhy">${esc(why.line)}</span>` : ''}</td>
     <td>${esc(r.category ?? '—')}</td>
     <td>${esc(r.chains.slice(0, 3).join(', '))}${r.chains.length > 3 ? ` +${r.chains.length - 3}` : ''}</td>
     <td class="num">${money(r.tvl_usd)}</td>
@@ -174,6 +175,13 @@ function peersHtml(r) {
   </table></div>`;
 }
 
+function whyHtml(r) {
+  const w = DATA.rationales ? DATA.rationales[r.slug] : undefined;
+  if (!w) return '';
+  return `<h3>Why this rank</h3>
+  <p class="working-note why">${esc(w.why)}</p>`;
+}
+
 function detailHtml(r) {
   const growth = r.change_7d === null ? 'no change reported (factor 1.00)' :
     `${r.change_7d > 0 ? '+' : ''}${r.change_7d.toFixed(1)}% over seven days (factor ${r.growth_factor.toFixed(2)})`;
@@ -194,6 +202,7 @@ function detailHtml(r) {
   </div>
   <p class="working">${money(r.tvl_usd)} × ${r.peer_multiple.toFixed(2)} × ${r.growth_factor.toFixed(2)} × ${r.maturity_factor.toFixed(2)} = ${money(r.implied_value_usd)}</p>
   <p class="working-note">${peerNote} Growth: ${growth}. Maturity: a tokenless record of ${ageText(r.age_days)} gives factor ${r.maturity_factor.toFixed(2)} on the model's 0.75–1.00 scale.</p>
+  ${whyHtml(r)}
   ${rangeHtml(r)}
   ${peersHtml(r)}
   <h3>Farm plan</h3>

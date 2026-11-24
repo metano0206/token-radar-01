@@ -25,7 +25,10 @@
 // Each farm plan's steps carry their own cost and time as numbers, not just as prose: a chain's
 // fee range and funding route have dollar figures behind their phrases, and a step that states
 // a percentage fee states the volume it rides on. The dashboard sums those numbers into a plan
-// total per row and rolls the board up by category, all from the same generated data.
+// total per row and rolls the board up by category, all from the same generated data. Each row
+// also carries a short why-this-rank rationale — its standing in its category, its multiple
+// against the category and global medians, its week, its record's age, and the ranks its peer
+// range would give it — written by the same code from the same figures, for the detail view.
 
 /** One protocol entry of the snapshot: exactly the ten fields the sealed input carries. */
 export interface SnapshotProtocol {
@@ -52,7 +55,7 @@ export interface Snapshot {
 
 /** The model's stated constants. The dashboard prints them; nothing hides in the code. */
 export const MODEL = {
-  version: 'peer-multiple-3',
+  version: 'peer-multiple-4',
   growth_clamp_low: -50,
   growth_clamp_high: 100,
   growth_weight: 0.35,
@@ -347,6 +350,7 @@ export function valueRange(ctx: ScoreContext, p: SnapshotProtocol, s: Score): Va
 export type FarmFamily =
   | 'lending'
   | 'cdp'
+  | 'cdp-manager'
   | 'trading'
   | 'perps'
   | 'yield'
@@ -363,8 +367,9 @@ export function farmFamily(p: SnapshotProtocol): FarmFamily {
     case 'Collateral Markets':
       return 'lending';
     case 'CDP':
-    case 'CDP Manager':
       return 'cdp';
+    case 'CDP Manager':
+      return 'cdp-manager';
     case 'Dexs':
       return 'trading';
     case 'Derivatives':
@@ -564,6 +569,29 @@ function money(n: number): string {
   return `$${n.toLocaleString('en-US')}`;
 }
 
+/** An ordinal for prose: 1st, 2nd, 3rd, 4th … */
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
+/** How long a tokenless record runs, in prose: months under a year, else years to one decimal. */
+function recordLength(age: number): string {
+  const years = age / 365.25;
+  if (years >= 1) return `${years.toFixed(1)} years`;
+  return `${Math.max(1, Math.round(age / 30.44))} months`;
+}
+
 /**
  * The farm plan for one protocol: six concrete steps, each with what it costs and how long it
  * takes. The steps are written from the protocol's own record, not from a family template
@@ -608,8 +636,9 @@ export function farmPlan(p: SnapshotProtocol, age: number): FarmStep[] {
   const family = farmFamily(p);
   const since = p.listed_at !== null ? `, where its record runs back to ${p.listed_at.slice(0, 4)}` : '';
   const core: Record<FarmFamily, FarmStep> = {
-    lending: { text: `Supply ${money(stake)} of a major stablecoin or ETH as collateral in ${p.name} on ${chain}, then borrow a small amount (under 30% of the collateral value) and repay it within the week, so the address shows both sides of the lending market. Cost: ${gas} plus a few dollars of interest; about 25 minutes.`, cost_usd: gm + 3, minutes: 25 },
+    lending: { text: `Supply ${money(stake)} of a major stablecoin, or another major asset its markets accept, as collateral in ${p.name} on ${chain}, then borrow a small amount (under 30% of the collateral value) and repay it within the week, so the address shows both sides of the lending market. Cost: ${gas} plus a few dollars of interest; about 25 minutes.`, cost_usd: gm + 3, minutes: 25 },
     cdp: { text: `Deposit ${money(stake)} of collateral in ${p.name} on ${chain} (a major asset it accepts, such as the chain's native token, BTC or ETH) and mint its stablecoin against it at a conservative ratio (collateral worth at least twice the debt), then repay part of the mint within the first month. Cost: ${gas} to open and adjust the position; about 25 minutes.`, cost_usd: 2 * gm, minutes: 25 },
+    'cdp-manager': { text: `Deposit ${money(stake)} of collateral through ${p.name} on ${chain} (a major asset the vaults it manages accept, such as the chain's native token, BTC or ETH) and draw the vault's stablecoin against it at a conservative ratio (collateral worth at least twice the debt), then repay part of the draw within the first month. Cost: ${gas} to open and adjust the position; about 25 minutes.`, cost_usd: 2 * gm, minutes: 25 },
     trading: { text: `Trade ${money(stake)} of volume on ${p.name} on ${chain} across at least four separate sessions in the first week, and leave a small position in one of its main liquidity pools, so the address shows both swaps and provided liquidity. Cost: ${gas} plus roughly 0.1-0.3% in swap and pool fees; about 20 minutes a session.`, cost_usd: 5 * gm + 0.002 * stake, minutes: 80 },
     perps: { text: `Open and close small perpetual positions on ${p.name} on ${chain} across at least four separate sessions in the first week, keeping each position under ${money(Math.round(stake / 2))} of margin and closing it the same day, so the address reads as a genuine trader rather than one wash trade. Cost: ${gas} plus trading fees and any funding paid; about 20 minutes a session.`, cost_usd: 4 * gm, minutes: 80 },
     yield: { text: `Deposit ${money(stake)} into the main vault of ${p.name} on ${chain} and leave it in place; the vault shares that accrue are the record of the position. Cost: ${gas} to deposit and the same again to withdraw later; about 15 minutes.`, cost_usd: 2 * gm, minutes: 15 },
@@ -622,7 +651,8 @@ export function farmPlan(p: SnapshotProtocol, age: number): FarmStep[] {
   const second: Record<FarmFamily, FarmStep> = {
     lending: { text: `Repeat a smaller supply-and-borrow cycle every week for ${weeks} weeks, varying the amounts, and vote in any governance poll the app opens to suppliers. Cost: ${gas} a week; about 10 minutes a week.`, cost_usd: gm * weeks, minutes: 10 * weeks },
     cdp: { text: `Adjust the position once a month (top the collateral up or repay a slice as prices move) so it stays live and safely collateralised across the whole ${weeks}-week run. Cost: ${gas} a month; about 10 minutes a month.`, cost_usd: gm * months, minutes: 10 * months },
-    trading: { text: `Come back for one session a week for ${weeks} weeks, and use a second feature of ${p.name} (a limit order, a different pair, or a second pool) at least twice. Cost: ${gas} plus fees a session; about 20 minutes a week.`, cost_usd: (gm + 0.001 * stake) * weeks, minutes: 20 * weeks },
+    'cdp-manager': { text: `Adjust the position once a month (top the collateral up or repay a slice as prices move) so it stays live and safely collateralised across the whole ${weeks}-week run. Cost: ${gas} a month; about 10 minutes a month.`, cost_usd: gm * months, minutes: 10 * months },
+    trading: { text: `Come back for one session a week for ${weeks} weeks, and use a second feature of ${p.name} (a limit order, a different pair, or a second pool) at least twice. Cost: ${gas} plus roughly 0.1% of the position in swap fees a session; about 20 minutes a week.`, cost_usd: (gm + 0.001 * stake) * weeks, minutes: 20 * weeks },
     perps: { text: `Come back for one session a week for ${weeks} weeks and try a second market of ${p.name} at least twice, keeping the same small size. Cost: ${gas} plus fees and funding a session; about 20 minutes a week.`, cost_usd: gm * weeks, minutes: 20 * weeks },
     yield: { text: `Add a small top-up or rebalance between two of the protocol's vaults once a month, and claim and re-deposit any rewards it pays, so the address shows an ongoing allocation rather than a single deposit. Cost: ${gas} a month; about 10 minutes a month.`, cost_usd: gm * months, minutes: 10 * months },
     curator: { text: `Once a month, move a slice of the position (about a quarter) into a second vault ${p.name} curates, or top the first one up, and read the curator's posted allocation notes when they appear. Cost: ${gas} a month; about 10 minutes a month.`, cost_usd: gm * months, minutes: 10 * months },
@@ -633,8 +663,9 @@ export function farmPlan(p: SnapshotProtocol, age: number): FarmStep[] {
   };
   // The same-chain deepen step is worded for the product type where the generic market-or-vault
   // wording would name the wrong thing: a prediction record deepens across more markets, not
-  // pools, and an RWA record's recurring step already makes a second purchase, so its deepen
-  // step reaches for a second product instead of repeating the purchase.
+  // pools, a perps record across another of its markets, not a vault, and an RWA record's
+  // recurring step already makes a second purchase, so its deepen step reaches for a second
+  // product instead of repeating the purchase.
   const deepenSingle: FarmStep =
     family === 'prediction'
       ? {
@@ -642,7 +673,13 @@ export function farmPlan(p: SnapshotProtocol, age: number): FarmStep[] {
           cost_usd: 5 * gm,
           minutes: 15,
         }
-      : family === 'rwa'
+      : family === 'perps'
+        ? {
+            text: `Deepen the same-chain record: run a second, smaller position (about ${money(Math.round(stake / 4))}) in a different market of ${p.name} on ${chain}, so the record is not riding on a single market. Cost: ${gas} in and the same again out; about 15 minutes.`,
+            cost_usd: 2 * gm,
+            minutes: 15,
+          }
+        : family === 'rwa'
         ? {
             text: `Deepen the same-chain record: if ${p.name} offers a second product on ${chain} (a different asset or a different maturity), buy a smaller amount (about ${money(Math.round(stake / 4))}) of that one too, so the record is not riding on a single product; if it offers only the one, add the same amount again in a later month instead. Cost: ${gas} plus any issuance spread the product states; about 15 minutes.`,
             cost_usd: gm,
@@ -786,6 +823,79 @@ export interface RowRange {
   hi: number;
 }
 
+/** One row's why-this-rank rationale: the full text for the detail view, and a compact line for the board. */
+export interface RankRationale {
+  why: string;
+  line: string;
+}
+
+/**
+ * Why one row sits at its rank, in two to four sentences and a compact line, from the
+ * snapshot's figures alone: where the row stands in its own category (by value, and by the
+ * TVL it holds), how its applied multiple reads against its category's peer median and the
+ * global median, what its seven-day move and its record's age did to its factors, and which
+ * ranks its peer range would give it. The same figures the page already prints, stated as
+ * the reason for the rank; nothing here feeds back into the score.
+ */
+export function rankRationale(
+  snapshot: Snapshot,
+  board: BoardRow[],
+  peers: PeerMultiples,
+  p: SnapshotProtocol,
+  row: BoardRow,
+  range: RowRange,
+): RankRationale {
+  const sibs = board.filter((r) => r.category === row.category);
+  const catRank = sibs.findIndex((r) => r.slug === row.slug) + 1;
+  const tvlRank = [...sibs]
+    .sort((a, b) => b.tvl_usd - a.tvl_usd || a.rank - b.rank)
+    .findIndex((r) => r.slug === row.slug) + 1;
+  const catTvl = sibs.reduce((sum, r) => sum + r.tvl_usd, 0);
+  const catLabel = row.category ?? 'Uncategorised';
+  const inPhrase = row.category !== null ? `in ${catLabel}` : `among the board's uncategorised rows`;
+  const standing =
+    sibs.length === 1
+      ? `${row.name} is the only ${catLabel} row on the board, on ${money(row.tvl_usd)} of TVL.`
+      : `${row.name} stands ${catRank} of ${sibs.length} ${inPhrase} by implied value, on ${
+          tvlRank === 1
+            ? `the category's largest TVL (${money(row.tvl_usd)} of the ${money(catTvl)} its rows hold together)`
+            : `${money(row.tvl_usd)} of TVL, the category's ${ordinal(tvlRank)}-largest`
+        }.`;
+  const entry = row.category !== null ? peers.by_category.get(row.category) : undefined;
+  const applied = row.peer_multiple.toFixed(2);
+  const global = peers.global_median.toFixed(2);
+  const multiple =
+    entry !== undefined && row.peer_count > 0
+      ? `Its applied multiple, ${applied}×, is its category's peer median (${entry.median.toFixed(2)}×) shrunk toward the global median (${global}×) over ${entry.peers} tokenized peer${entry.peers === 1 ? '' : 's'}.`
+      : `Its category records no tokenized peer with a market cap in the snapshot, so it is priced at the global peer median, ${global}×.`;
+  const c = p.change_7d;
+  const growthClause =
+    c === null
+      ? `No seven-day TVL change is reported for it, so its growth factor is a neutral ${row.growth_factor.toFixed(2)}`
+      : c > 0.05
+        ? `Its TVL rose ${c.toFixed(1)}% in the snapshot's last week, a growth factor of ${row.growth_factor.toFixed(2)}`
+        : c < -0.05
+          ? `Its TVL fell ${(-c).toFixed(1)}% in the snapshot's last week, a growth factor of ${row.growth_factor.toFixed(2)}`
+          : `Its TVL was near flat over the snapshot's last week (${c.toFixed(1)}%), a growth factor of ${row.growth_factor.toFixed(2)}`;
+  const maturityClause =
+    ageDays(snapshot, p) !== null
+      ? `its tokenless record runs ${recordLength(row.age_days)}, earning a maturity factor of ${row.maturity_factor.toFixed(2)} on the model's 0.75–1.00 scale`
+      : `its record carries no listing date, so its maturity factor of ${row.maturity_factor.toFixed(2)} is read at the ranked set's median age`;
+  const rankAt = (v: number): number => 1 + board.reduce((n, r) => n + (r.implied_value_usd > v ? 1 : 0), 0);
+  const rankHigh = rankAt(range.hi);
+  const rankLow = rankAt(range.lo);
+  const hasPeers = entry !== undefined && row.peer_count > 0;
+  const rangeSentence =
+    rankHigh === row.rank && rankLow === row.rank
+      ? `${hasPeers ? 'Its peer range' : 'The global peer range it is priced from'} is narrow beside its neighbours: priced at either end of it, it would still sit at about this rank.`
+      : `Priced at ${hasPeers ? "its peer set's" : "the global peer spread's"} 75th-percentile multiple it would be worth ${money(range.hi)}, about rank ${rankHigh}; at the 25th percentile, ${money(range.lo)}, about rank ${rankLow}.`;
+  const line =
+    entry !== undefined && row.peer_count > 0
+      ? `#${catRank} of ${sibs.length} in ${catLabel} · ${applied}× vs ${global}× global`
+      : `#${catRank} of ${sibs.length} in ${catLabel} · priced at the global median, ${global}×`;
+  return { why: [standing, multiple, `${growthClause}; ${maturityClause}.`, rangeSentence].join(' '), line };
+}
+
 /** One category's roll-up over the board's rows, for the dashboard's category overview. */
 export interface CategorySummary {
   category: string | null;
@@ -808,6 +918,7 @@ export interface DashboardData {
   peer_sets: PeerSet[];
   ranges: Record<string, RowRange>;
   farm_totals: Record<string, FarmTotals>;
+  rationales: Record<string, RankRationale>;
   categories: CategorySummary[];
   rows: BoardRow[];
 }
@@ -839,6 +950,10 @@ export function buildDashboardData(snapshot: Snapshot, board: BoardRow[]): Dashb
   const farmTotalsBySlug: Record<string, FarmTotals> = {};
   for (const row of board) {
     farmTotalsBySlug[row.slug] = farmTotals(bySlug.get(row.slug)!, row.age_days);
+  }
+  const rationales: Record<string, RankRationale> = {};
+  for (const row of board) {
+    rationales[row.slug] = rankRationale(snapshot, board, ctx.peers, bySlug.get(row.slug)!, row, ranges[row.slug]!);
   }
   const rowsByCategory = new Map<string | null, BoardRow[]>();
   for (const row of board) {
@@ -873,6 +988,7 @@ export function buildDashboardData(snapshot: Snapshot, board: BoardRow[]): Dashb
     peer_sets: peerSets,
     ranges,
     farm_totals: farmTotalsBySlug,
+    rationales,
     categories,
     rows: board,
   };
