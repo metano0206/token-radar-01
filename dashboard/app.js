@@ -1,6 +1,7 @@
 /* Token Launch Radar — the board page. Renders window.TOKEN_RADAR (written by main.ts as
-   ../data.js from the same board it hands in), with search, filters, five sort orders and a
-   detail view per protocol. State lives in the location hash, so a view can be linked:
+   ../data.js from the same board it hands in), with search, filters, six sort orders, a
+   category roll-up that filters the board, and a detail view per protocol. State lives in
+   the location hash, so a view can be linked:
    #p=<slug> opens a protocol, #cat=, #chain=, #watch=1, #q= and #sort= set the board. */
 'use strict';
 
@@ -12,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   meta: $('meta-line'), universe: $('universe'), q: $('q'), cat: $('cat'), chain: $('chain'),
   sort: $('sort'), watch: $('watch'), count: $('count'), tbody: $('rows'), empty: $('empty'),
-  detail: $('detail'), fine: $('fine-line'),
+  detail: $('detail'), fine: $('fine-line'), catRows: $('cat-rows'),
 };
 
 function money(n) {
@@ -52,6 +53,24 @@ els.universe.innerHTML = [
 els.fine.textContent =
   `Board generated from the sealed snapshot of ${DATA.as_of}. Global peer multiple across all categories: ${DATA.global_multiple.toFixed(3)}.`;
 
+/* ---- the board by category ---- */
+els.catRows.innerHTML = (DATA.categories || [])
+  .map((c) => `<tr${c.category ? ` data-cat="${esc(c.category)}" class="pick"` : ''}>
+    <td><span class="pname">${esc(c.category ?? 'Uncategorised')}</span></td>
+    <td class="num">${c.ranked}</td>
+    <td class="num">${c.watchlist}</td>
+    <td class="num">${money(c.tvl_usd)}</td>
+    <td class="num"><strong>${money(c.implied_usd)}</strong></td>
+    <td class="num">${c.median_multiple.toFixed(2)}×</td>
+  </tr>`)
+  .join('');
+els.catRows.addEventListener('click', (ev) => {
+  const tr = ev.target.closest('tr[data-cat]');
+  if (!tr) return;
+  saveState({ cat: tr.dataset.cat, p: '' });
+  $('controls').scrollIntoView({ block: 'start' });
+});
+
 /* ---- controls ---- */
 const categories = [...new Set(rows.map((r) => r.category).filter(Boolean))].sort();
 for (const c of categories) els.cat.insertAdjacentHTML('beforeend', `<option>${esc(c)}</option>`);
@@ -78,10 +97,12 @@ function saveState(patch) {
   render();
 }
 
+const farmCost = (r) => (DATA.farm_totals[r.slug] ? DATA.farm_totals[r.slug].cost_usd : 0);
 const SORTERS = {
   rank: (a, b) => a.rank - b.rank,
   tvl: (a, b) => b.tvl_usd - a.tvl_usd,
   growth: (a, b) => (b.change_7d ?? -Infinity) - (a.change_7d ?? -Infinity),
+  farm: (a, b) => farmCost(a) - farmCost(b) || a.rank - b.rank,
   age: (a, b) => b.age_days - a.age_days,
   name: (a, b) => a.name.localeCompare(b.name),
 };
@@ -98,6 +119,8 @@ function visible() {
 }
 
 function rowHtml(r, selected) {
+  const rg = DATA.ranges[r.slug];
+  const ft = DATA.farm_totals[r.slug];
   return `<tr data-slug="${esc(r.slug)}"${r.slug === selected ? ' class="selected"' : ''}>
     <td class="num rank">${r.rank}</td>
     <td><span class="pname">${esc(r.name)}</span>${r.watchlist ? '<span class="chip">Watchlist</span>' : ''}<span class="pslug">${esc(r.slug)}</span></td>
@@ -108,6 +131,8 @@ function rowHtml(r, selected) {
     <td class="num">${ageText(r.age_days)}</td>
     <td class="num">${r.peer_multiple.toFixed(2)}×</td>
     <td class="num"><strong>${money(r.implied_value_usd)}</strong></td>
+    <td class="num">${rg ? `${money(rg.lo)} – ${money(rg.hi)}` : '—'}</td>
+    <td class="num">${ft ? money(ft.cost_usd) : '—'}</td>
   </tr>`;
 }
 
@@ -172,7 +197,18 @@ function detailHtml(r) {
   ${rangeHtml(r)}
   ${peersHtml(r)}
   <h3>Farm plan</h3>
+  ${planTotalHtml(r)}
   <ol class="plan">${r.farm_steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>`;
+}
+
+function planTotalHtml(r) {
+  const ft = DATA.farm_totals[r.slug];
+  if (!ft) return '';
+  const hours = (ft.minutes / 60).toFixed(1);
+  return `<p class="working-note">The whole plan, totalled from its own steps: about
+  <strong>${money(ft.cost_usd)}</strong> in network, funding-route and stated percentage fees
+  across the full ${ft.weeks}-week run, and about <strong>${hours} hours</strong> of work.
+  The position itself is not in the total — it is capital, not a cost.</p>`;
 }
 
 let firstRender = true;

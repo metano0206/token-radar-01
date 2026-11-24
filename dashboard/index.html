@@ -68,6 +68,13 @@
       snapshot's figures alone; no protocol's name is looked up, weighted or excluded by hand,
       and the tokenized protocols are never ranked — they are the yardstick, not the board.
       The program that writes this page runs twice to the same bytes.</li>
+      <li><strong>The farm totals.</strong> Each plan's steps carry numbers, not just prose: a
+      chain's fee range and funding route have dollar figures behind their phrases, and a step
+      that states a percentage fee states the volume it rides on. The board sums each plan's
+      own step costs into the farm-cost column — what working the plan for its full run costs
+      in fees, never counting the stake itself, which is capital, not cost — and each detail
+      view shows the plan's total time alongside it. The table under the board rolls the same
+      rows up by category.</li>
     </ol>
   </div>
 </section>
@@ -88,6 +95,7 @@
         <option value="rank">Implied value</option>
         <option value="tvl">TVL</option>
         <option value="growth">7-day growth</option>
+        <option value="farm">Farm cost (lowest first)</option>
         <option value="age">Age of record</option>
         <option value="name">Name</option>
       </select>
@@ -107,12 +115,33 @@
           <th class="num">#</th><th>Protocol</th><th>Category</th><th>Chains</th>
           <th class="num">TVL</th><th class="num">7d</th><th class="num">Age</th>
           <th class="num">Multiple</th><th class="num">Implied value</th>
+          <th class="num">Value range</th><th class="num">Farm cost</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
   <p class="empty" id="empty" hidden>No protocol on the board matches those filters.</p>
+</section>
+
+<section class="wrap cats" aria-label="The board by category">
+  <h2>The board by category</h2>
+  <p class="cats-note">Every category on the board, rolled up from the same rows: how many
+  protocols are ranked, how many of them sit on the snapshot's watchlist, the TVL they hold
+  between them, the implied launch value the model gives them together, and the median peer
+  multiple applied to their rows. Select a category to filter the board to it.</p>
+  <div class="table-scroll">
+    <table id="cats">
+      <thead>
+        <tr>
+          <th>Category</th><th class="num">Ranked</th><th class="num">Watchlist</th>
+          <th class="num">Total TVL</th><th class="num">Total implied value</th>
+          <th class="num">Median multiple</th>
+        </tr>
+      </thead>
+      <tbody id="cat-rows"></tbody>
+    </table>
+  </div>
 </section>
 
 <footer class="wrap">

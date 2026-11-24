@@ -76,7 +76,7 @@ body {
 
 /* Board table */
 .table-scroll { overflow-x: auto; border: 1px solid var(--line); background: var(--card); }
-table { border-collapse: collapse; width: 100%; min-width: 860px; }
+table { border-collapse: collapse; width: 100%; min-width: 1080px; }
 thead th {
   position: sticky; top: 0; background: var(--ink); color: #f2ecdc; text-align: left;
   font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; padding: 9px 10px; white-space: nowrap;
@@ -129,6 +129,17 @@ ol.plan li { margin-bottom: 8px; max-width: 96ch; }
 table.peers { min-width: 0; font-size: 13.5px; }
 table.peers thead th { background: var(--ink-soft); padding: 7px 10px; }
 table.peers tbody td { padding: 6px 10px; }
+
+/* The board by category */
+.cats { margin-top: 30px; }
+.cats h2 {
+  font-family: Georgia, serif; font-size: 21px; margin: 0 0 10px;
+  border-bottom: 2px solid var(--amber); padding-bottom: 7px;
+}
+.cats-note { margin: 0 0 12px; font-size: 13.5px; color: var(--ink-soft); max-width: 108ch; }
+table#cats { min-width: 720px; }
+table#cats tbody tr { cursor: default; }
+table#cats tbody tr.pick { cursor: pointer; }
 
 /* Footer */
 footer { margin: 26px auto 34px; font-size: 13.5px; color: var(--ink-soft); }
